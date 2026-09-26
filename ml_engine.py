@@ -2,13 +2,15 @@
 FloodRiskAI - Machine Learning & Analytics Engine
 Handles multi-model training, evaluation, SHAP-like feature attributions,
 and scenario sensitivity analysis.
+Models included: Random Forest, Support Vector Machine (SVM), Logistic Regression.
 """
 
 import os
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -117,20 +119,19 @@ class MLEngine:
             X_train_scaled = self.scaler.transform(X_train)
             X_test_scaled = self.scaler.transform(X_test)
 
-            # Train companion models for multi-model benchmarking
-            gb_model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
-            gb_model.fit(X_train_scaled, y_train)
-            self.models["Gradient Boosting"] = gb_model
+            # Train Support Vector Machine (SVM)
+            svm_model = SVC(kernel='rbf', C=1.0, probability=True, random_state=42)
+            svm_model.fit(X_train_scaled, y_train)
+            self.models["Support Vector Machine (SVM)"] = svm_model
 
-            et_model = ExtraTreesClassifier(n_estimators=100, max_depth=10, random_state=42)
-            et_model.fit(X_train_scaled, y_train)
-            self.models["Extra Trees"] = et_model
-
+            # Train Logistic Regression
             lr_model = LogisticRegression(max_iter=1000, random_state=42)
             lr_model.fit(X_train_scaled, y_train)
             self.models["Logistic Regression"] = lr_model
 
             # Compute benchmarks
+            rf_importances = getattr(self.models["Random Forest"], "feature_importances_", None)
+
             for name, mdl in self.models.items():
                 y_pred = mdl.predict(X_test_scaled)
                 y_proba = mdl.predict_proba(X_test_scaled)[:, 1]
@@ -143,7 +144,6 @@ class MLEngine:
                 cm = confusion_matrix(y_test, y_pred).tolist()
 
                 fpr, tpr, _ = roc_curve(y_test, y_proba)
-                # Sample ROC points for lighter JSON response
                 step = max(1, len(fpr) // 30)
                 roc_points = [{"fpr": round(float(f), 4), "tpr": round(float(t), 4)} 
                               for f, t in zip(fpr[::step], tpr[::step])]
@@ -152,6 +152,9 @@ class MLEngine:
                 if importances is None and hasattr(mdl, "coef_"):
                     importances = np.abs(mdl.coef_[0])
                     importances = importances / np.sum(importances)
+                elif importances is None:
+                    # Fallback to Random Forest importances for SVM
+                    importances = rf_importances
 
                 feat_imp = []
                 if importances is not None:
@@ -201,6 +204,8 @@ class MLEngine:
         if importances is None and hasattr(target_model, "coef_"):
             importances = np.abs(target_model.coef_[0])
             importances = importances / np.sum(importances)
+        elif importances is None:
+            importances = getattr(self.models["Random Forest"], "feature_importances_", None)
 
         attributions = []
         if importances is not None:
@@ -209,7 +214,6 @@ class MLEngine:
                 mean = float(self.feature_means[col])
                 std = float(self.feature_stds[col])
                 z_score = float((val - mean) / std)
-                # direction * importance * z_score scale factor
                 contrib = float(z_score * float(imp) * 10.0)
                 raw_contribs.append((col, val, contrib, float(imp)))
 
@@ -239,24 +243,16 @@ class MLEngine:
         }
 
     def simulate_scenario(self, base_values, modifiers, model_name="Random Forest"):
-        """
-        Simulate climate stress test by modifying base values.
-        Returns baseline prediction, stressed prediction, and sensitivity curve data.
-        """
         target_model = self.models.get(model_name, self.models.get("Random Forest"))
         
-        # 1. Baseline prediction
         base_pred = self.predict(base_values, model_name=model_name)
 
-        # 2. Modifed feature values
-        # modifiers can include: discharge_mult (e.g., 1.3), volume_mult (e.g., 1.2), duration_add (e.g., 2)
         discharge_mult = float(modifiers.get("discharge_mult", 1.0))
         volume_mult = float(modifiers.get("volume_mult", 1.0))
         duration_add = float(modifiers.get("duration_add", 0.0))
         peak_occurrences_add = float(modifiers.get("peak_occurrences_add", 0.0))
 
         stressed_values = list(base_values)
-        # FEATURE_COLS: ["Num Peak FL", "Peak Discharge Q (cumec)", "Flood Volume (cumec)", "Event Duration (days)", ...]
         stressed_values[0] = min(10.0, max(1.0, stressed_values[0] + peak_occurrences_add))
         stressed_values[1] = max(0.0, stressed_values[1] * discharge_mult)
         stressed_values[2] = max(0.0, stressed_values[2] * volume_mult)
@@ -264,7 +260,6 @@ class MLEngine:
 
         stressed_pred = self.predict(stressed_values, model_name=model_name)
 
-        # 3. Generate Discharge Sensitivity Curve
         discharge_curve = []
         base_q = base_values[1]
         test_steps = np.linspace(max(100, base_q * 0.2), base_q * 2.5, 15)
@@ -272,7 +267,6 @@ class MLEngine:
         for q_val in test_steps:
             temp_row = list(base_values)
             temp_row[1] = q_val
-            # scale volume proportionally
             if base_q > 0:
                 temp_row[2] = base_values[2] * (q_val / base_q)
             res = self.predict(temp_row, model_name=model_name)
