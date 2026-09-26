@@ -423,6 +423,14 @@ def api_export_report():
     return Response(html_doc, mimetype="text/html")
 
 
+@app.route("/api/location-search")
+def api_location_search():
+    query = request.args.get("q", "").strip()
+    from location_engine import search_locations
+    results = search_locations(query)
+    return jsonify({"query": query, "count": len(results), "locations": results})
+
+
 @app.route("/api/health")
 def health():
     return jsonify({

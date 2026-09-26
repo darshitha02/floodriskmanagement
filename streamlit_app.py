@@ -1,6 +1,6 @@
 """
-FloodRiskAI — Streamlit Disaster Intelligence & Risk Platform
-DataQuest 2026 · Disaster Management Analytics (Level 1 + Level 2 + Level 3)
+FloodRiskAI — Streamlit Disaster Intelligence & Location Risk Predictor
+DataQuest 2026 · Disaster Management Analytics
 """
 
 import os
@@ -13,23 +13,22 @@ import folium
 from streamlit_folium import st_folium
 
 from ml_engine import ml_engine, FEATURE_META, FEATURE_COLS
+from location_engine import search_locations
 from report_generator import generate_risk_report_html
 
-# --- Page Config ---
+# Page Config
 st.set_page_config(
-    page_title="FloodRiskAI — Next-Gen Disaster Management Platform",
+    page_title="FloodRiskAI — Location Search & Risk Predictor",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- High-End Custom Glassmorphism Theme CSS ---
+# Theme CSS
 st.markdown("""
 <style>
-    /* Dark Theme Accents */
     .main { background: #071927; color: #e2e8f0; }
     .stApp { background-color: #071927; }
-    
     .hero-banner-st {
         background: linear-gradient(135deg, #071927 0%, #0d2a45 40%, #0f3d66 100%);
         padding: 2.2rem;
@@ -39,10 +38,8 @@ st.markdown("""
         margin-bottom: 2rem;
         box-shadow: 0 8px 32px rgba(0,0,0,0.3);
     }
-    
     .hero-title-st { font-size: 2.4rem; font-weight: 700; color: #ffffff; font-family: 'Poppins', sans-serif; }
     .hero-sub-st { color: #94a3b8; font-size: 1.05rem; }
-    
     .card-stat {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -53,10 +50,6 @@ st.markdown("""
     }
     .stat-val-st { font-size: 2.2rem; font-weight: 700; color: #00d2ff; }
     .stat-lbl-st { font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
-
-    /* Fix Streamlit Widget Styling */
-    div[data-baseweb="select"] > div { background-color: #0f2b48 !important; color: white !important; }
-    .stMarkdown { color: #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -80,7 +73,6 @@ def load_data():
 
 df_flood, df_inv = load_data()
 
-# State Centroids
 STATE_COORDS = {
     "Maharashtra": (19.7515, 75.7139), "Assam": (26.2006, 92.9376), "Kerala": (10.8505, 76.2711),
     "Karnataka": (15.3173, 75.7139), "Uttar Pradesh": (26.8467, 80.9462), "Himachal Pradesh": (31.1048, 77.1734),
@@ -97,13 +89,13 @@ RIVER_STATIONS = [
     {"station": "Idukki Gauge", "river": "Periyar", "state": "Kerala", "lat": 9.8497, "lon": 76.9813, "current": 34.80, "danger": 38.00, "status": "NORMAL"}
 ]
 
-# Sidebar
 st.sidebar.markdown("# 🌊 FloodRiskAI")
 st.sidebar.caption("DataQuest 2026 · Disaster Intelligence Platform")
 
 page = st.sidebar.radio(
     "Navigation Mode",
     [
+        "🔍 Search Location & Predict",
         "📊 Command Center Dashboard",
         "🗺️ Interactive GIS Risk Map",
         "🧠 AI Risk Predictor & SHAP",
@@ -115,13 +107,53 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.success("✅ **System Status:** All AI Models & Datasets Online")
-
+st.sidebar.success("✅ **Location Search & AI Models Active**")
 
 # -----------------------------------------------------------------------------
-# PAGE 1: COMMAND CENTER
+# PAGE: SEARCH LOCATION & PREDICT
 # -----------------------------------------------------------------------------
-if page == "📊 Command Center Dashboard":
+if page == "🔍 Search Location & Predict":
+    st.markdown("""
+    <div class="hero-banner-st">
+        <div class="hero-title-st">Search Location & Predict Flood Risk</div>
+        <div class="hero-sub-st">Type any Indian city, district, or state to predict location-specific flood severity & SHAP attributions.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    loc_query = st.text_input("📍 Search Any Place, City, or District in India", "Guwahati", help="Type Guwahati, Wayanad, Patna, Kochi, Cuttack, Mumbai, Assam...")
+
+    if loc_query:
+        loc_results = search_locations(loc_query)
+        if loc_results:
+            top_loc = loc_results[0]
+            st.markdown(f"### 📍 Flood Risk Analysis for: **{top_loc['name']}, {top_loc['state']}**")
+            
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Location Risk Score", f"{top_loc['risk_score']}%", top_loc['risk_level'].upper() + " RISK")
+            mc2.metric("Predicted Severity Class", top_loc['prediction'], f"River: {top_loc['river']}")
+            mc3.metric("Peak Discharge (cumec)", f"{top_loc['peak_discharge']:,}", top_loc['cause'])
+
+            st.markdown("---")
+
+            col_l, col_r = st.columns(2)
+            with col_l:
+                st.markdown("##### 🎛️ Location Hydrological Telemetry Profile")
+                st.write(f"• **Peak Discharge:** {top_loc['peak_discharge']:,} cumec")
+                st.write(f"• **Cumulative Volume:** {top_loc['flood_volume']:,} cumec")
+                st.write(f"• **Monsoon Duration:** {top_loc['event_duration']} days")
+                st.write(f"• **Surge Wave Count:** {top_loc['num_peak_fl']} peaks")
+                st.write(f"• **Primary Cause:** {top_loc['cause']}")
+
+            with col_r:
+                st.markdown("##### 📊 Top Contributing Risk Factors")
+                factors_df = pd.DataFrame(top_loc.get("top_factors", []))
+                if not factors_df.empty:
+                    st.table(factors_df[["feature", "value", "impact_pct", "direction"]])
+
+# -----------------------------------------------------------------------------
+# COMMAND CENTER DASHBOARD
+# -----------------------------------------------------------------------------
+elif page == "📊 Command Center Dashboard":
     st.markdown("""
     <div class="hero-banner-st">
         <div class="hero-title-st">Next-Generation AI Disaster Intelligence Platform</div>
@@ -140,15 +172,13 @@ if page == "📊 Command Center Dashboard":
     with c4:
         st.markdown(f"<div class='card-stat'><div class='stat-val-st' style='color:#10b981;'>82.5%</div><div class='stat-lbl-st'>ML Model Accuracy</div></div>", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
     col_l, col_r = st.columns([7, 5])
     with col_l:
         st.subheader("📈 Historical Flood Event Frequency (India)")
         year_counts = df_flood["Year"].value_counts().sort_index().reset_index()
         year_counts.columns = ["Year", "Events"]
         fig_year = px.line(year_counts, x="Year", y="Events", markers=True, color_discrete_sequence=["#00d2ff"], template="plotly_dark")
-        fig_year.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        fig_year.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_year, width="stretch")
 
     with col_r:
@@ -159,27 +189,8 @@ if page == "📊 Command Center Dashboard":
         fig_type.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_type, width="stretch")
 
-    col_b1, col_b2 = st.columns(2)
-    with col_b1:
-        st.subheader("📍 Top High-Risk States")
-        state_counts = df_inv["State"].astype(str).str.split(",").explode().str.strip().value_counts().head(10).reset_index()
-        state_counts.columns = ["State", "Events"]
-        fig_state = px.bar(state_counts, x="Events", y="State", orientation="h", color="Events", color_continuous_scale="Teal", template="plotly_dark")
-        fig_state.update_layout(height=380, yaxis=dict(autorange="reversed"), paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_state, width="stretch")
-
-    with col_b2:
-        st.subheader("🌧️ Primary Meteorological Triggers")
-        cause_counts = df_inv["Main Cause"].astype(str).str.lower().str.strip().value_counts().head(8).reset_index()
-        cause_counts.columns = ["Cause", "Events"]
-        cause_counts["Cause"] = cause_counts["Cause"].str.title()
-        fig_cause = px.bar(cause_counts, x="Events", y="Cause", orientation="h", color_discrete_sequence=["#38b2ac"], template="plotly_dark")
-        fig_cause.update_layout(height=380, yaxis=dict(autorange="reversed"), paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_cause, width="stretch")
-
-
 # -----------------------------------------------------------------------------
-# PAGE 2: INTERACTIVE GIS MAP
+# INTERACTIVE GIS MAP
 # -----------------------------------------------------------------------------
 elif page == "🗺️ Interactive GIS Risk Map":
     st.subheader("🗺️ Interactive India GIS Flood Risk Map")
@@ -213,9 +224,8 @@ elif page == "🗺️ Interactive GIS Risk Map":
 
     st_folium(m, width=1100, height=580)
 
-
 # -----------------------------------------------------------------------------
-# PAGE 3: AI RISK PREDICTOR & SHAP
+# AI RISK PREDICTOR & SHAP
 # -----------------------------------------------------------------------------
 elif page == "🧠 AI Risk Predictor & SHAP":
     st.subheader("🧠 AI Flood Risk Calculator & Feature Attributions")
@@ -274,9 +284,8 @@ elif page == "🧠 AI Risk Predictor & SHAP":
         report_html = generate_risk_report_html(pred, inputs)
         st.download_button("🖨️ Download Official Assessment Report", data=report_html, file_name="flood_risk_report.html", mime="text/html")
 
-
 # -----------------------------------------------------------------------------
-# PAGE 4: CLIMATE SCENARIO STRESS SIMULATOR
+# CLIMATE STRESS SIMULATOR
 # -----------------------------------------------------------------------------
 elif page == "🎛️ Climate Stress Simulator":
     st.subheader("🎛️ Climate Scenario Stress Simulator")
@@ -304,9 +313,8 @@ elif page == "🎛️ Climate Stress Simulator":
         fig_sens.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_sens, width="stretch")
 
-
 # -----------------------------------------------------------------------------
-# PAGE 5: EMERGENCY ALERTS & PLAYBOOKS
+# EMERGENCY ALERTS & PLAYBOOKS
 # -----------------------------------------------------------------------------
 elif page == "🚨 Emergency Alert & Playbook":
     st.subheader("🚨 Live River Telemetry Alerts & Response Dispatch")
@@ -319,9 +327,8 @@ elif page == "🚨 Emergency Alert & Playbook":
             else:
                 st.warning("⚠️ **WARNING PROTOCOL:** Standby SDRF units alerted. Hourly telemetry gauge monitoring activated.")
 
-
 # -----------------------------------------------------------------------------
-# PAGE 6: MULTI-MODEL ML BENCHMARKS
+# MULTI-MODEL ML BENCHMARKS
 # -----------------------------------------------------------------------------
 elif page == "🧪 Multi-Model ML Benchmarks":
     st.subheader("🧪 Multi-Model Machine Learning Benchmarks")
@@ -338,17 +345,17 @@ elif page == "🧪 Multi-Model ML Benchmarks":
         })
     st.table(pd.DataFrame(bm_data))
 
-
 # -----------------------------------------------------------------------------
-# PAGE 7: DEVELOPER API SPECS
+# DEVELOPER API SPECS
 # -----------------------------------------------------------------------------
 elif page == "⚡ Developer API Specs":
     st.subheader("⚡ OpenAPI REST Developer Specifications")
     st.code("""
-POST /api/predict       # Single AI prediction & SHAP attributions
-POST /api/predict/batch # Batch prediction array processing
-POST /api/simulate      # Climate scenario stress test & sensitivity curve
-GET  /api/geospatial   # GeoJSON state points & river station telemetry
-GET  /api/alerts/active # Live active emergency alerts stream
-GET  /api/health       # System health check
+GET  /api/location-search?q=<place>  # Search location & get location flood risk
+POST /api/predict                    # Single AI prediction & SHAP attributions
+POST /api/predict/batch              # Batch prediction array processing
+POST /api/simulate                   # Climate scenario stress test & sensitivity curve
+GET  /api/geospatial                # GeoJSON state points & river station telemetry
+GET  /api/alerts/active              # Live active emergency alerts stream
+GET  /api/health                    # System health check
     """, language="bash")
