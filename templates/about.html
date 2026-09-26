@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}About the Platform · FloodRiskAI{% endblock %}
+
+{% block content %}
+<section class="hero-banner py-4">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="badge-pill-hero"><i class="fa-solid fa-circle-info me-1"></i> Architecture & Methodology</span>
+        <h1 class="hero-title fs-2 mt-2 mb-1">About FloodRiskAI</h1>
+        <p class="hero-sub mb-0 small text-light">Built for DataQuest 2026 · Disaster Management Analytics & Intelligence System.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="platform-card mb-4">
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-layer-group text-primary me-2"></i>Platform Architecture & Capabilities</h5>
+        <p>
+          <strong>FloodRiskAI</strong> is an end-to-end disaster management platform designed to bridge historical hydrological telemetry with real-time AI predictions, geospatial risk mapping, and emergency response playbooks.
+        </p>
+
+        <div class="row g-3 my-3">
+          <div class="col-md-4">
+            <div class="p-3 bg-light rounded-3 h-100 border border-info">
+              <span class="badge bg-info text-dark mb-2">Level 1 · Analytics</span>
+              <h6 class="fw-bold">Geospatial Analytics</h6>
+              <p class="small text-muted mb-0">Historical flood event frequency, state-level risk heatmaps, cause distributions, and live river telemetry stream.</p>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="p-3 bg-light rounded-3 h-100 border border-primary">
+              <span class="badge bg-primary mb-2">Level 2 · AI Prediction</span>
+              <h6 class="fw-bold">Multi-Model Machine Learning</h6>
+              <p class="small text-muted mb-0">Ensemble of Random Forest, Gradient Boosting, Extra Trees, and Logistic Regression with local SHAP feature attributions.</p>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="p-3 bg-light rounded-3 h-100 border border-purple" style="border-color:#8b5cf6!important;">
+              <span class="badge bg-dark mb-2" style="background:#8b5cf6!important;">Level 3 · Intelligence</span>
+              <h6 class="fw-bold">Scenario & Emergency Response</h6>
+              <p class="small text-muted mb-0">Climate stress-test simulator, river discharge sensitivity curves, and automated disaster response playbook dispatch.</p>
+            </div>
+          </div>
+        </div>
+
+        <h5 class="card-title-lg mt-4 mb-3"><i class="fa-solid fa-database text-info me-2"></i>Underlying Datasets</h5>
+        <ul>
+          <li><strong>Gauge Flood Events Dataset (`floodevents_indofloods.csv`):</strong> Contains 4,548 gauge-level hydrological flood events with peak discharge (cumec), flood volume, event duration, time to peak, recession time, and severity classifications.</li>
+          <li><strong>India Flood Inventory Dataset (`India_Flood_Inventory_v3.csv`):</strong> Contains 6,876 historical flood records spanning Indian states and districts, detailing main causes, displaced populations, and fatalities.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="platform-card h-100">
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-award text-warning me-2"></i>Key Project Highlights</h5>
+        <ul class="list-group list-group-flush small">
+          <li class="list-group-item bg-transparent px-0 py-2"><i class="fa-solid fa-circle-check text-success me-2"></i><strong>Ensemble ML Accuracy:</strong> 82.5% test accuracy with 0.879 ROC-AUC.</li>
+          <li class="list-group-item bg-transparent px-0 py-2"><i class="fa-solid fa-circle-check text-success me-2"></i><strong>SHAP Feature Explainability:</strong> Local waterfall feature attributions for every prediction.</li>
+          <li class="list-group-item bg-transparent px-0 py-2"><i class="fa-solid fa-circle-check text-success me-2"></i><strong>Geospatial GIS Engine:</strong> Interactive India flood heatmaps and live river gauge monitoring.</li>
+          <li class="list-group-item bg-transparent px-0 py-2"><i class="fa-solid fa-circle-check text-success me-2"></i><strong>OpenAPI REST Hub:</strong> Full developer API with batch prediction & PDF report exports.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

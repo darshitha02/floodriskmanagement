@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Developer REST API Hub · FloodRiskAI{% endblock %}
+
+{% block content %}
+<section class="hero-banner py-4">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="badge-pill-hero"><i class="fa-solid fa-code me-1"></i> OpenAPI & Developer SDK</span>
+        <h1 class="hero-title fs-2 mt-2 mb-1">Developer API Playground & Documentation</h1>
+        <p class="hero-sub mb-0 small text-light">Integrate FloodRiskAI disaster intelligence into third-party early warning systems and mobile apps.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <div class="row g-4">
+    <!-- Endpoints Nav Sidebar -->
+    <div class="col-lg-4">
+      <div class="platform-card h-100">
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-network-wired text-primary me-2"></i>API Endpoints</h5>
+        <div class="list-group list-group-flush small" id="apiEndpointList">
+          <a href="#ep-predict" class="list-group-item list-group-item-action active py-3">
+            <span class="badge bg-success me-2">POST</span> <code>/api/predict</code>
+            <div class="text-muted small mt-1">Single risk prediction & SHAP attributions</div>
+          </a>
+          <a href="#ep-batch" class="list-group-item list-group-item-action py-3">
+            <span class="badge bg-success me-2">POST</span> <code>/api/predict/batch</code>
+            <div class="text-muted small mt-1">Batch predictions for array of records</div>
+          </a>
+          <a href="#ep-simulate" class="list-group-item list-group-item-action py-3">
+            <span class="badge bg-success me-2">POST</span> <code>/api/simulate</code>
+            <div class="text-muted small mt-1">Climate scenario stress-testing</div>
+          </a>
+          <a href="#ep-geospatial" class="list-group-item list-group-item-action py-3">
+            <span class="badge bg-primary me-2">GET</span> <code>/api/geospatial</code>
+            <div class="text-muted small mt-1">Geospatial GeoJSON & river station data</div>
+          </a>
+          <a href="#ep-alerts" class="list-group-item list-group-item-action py-3">
+            <span class="badge bg-primary me-2">GET</span> <code>/api/alerts/active</code>
+            <div class="text-muted small mt-1">Live active emergency telemetry stream</div>
+          </a>
+          <a href="#ep-health" class="list-group-item list-group-item-action py-3">
+            <span class="badge bg-primary me-2">GET</span> <code>/api/health</code>
+            <div class="text-muted small mt-1">System health status check</div>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live API Tester Console -->
+    <div class="col-lg-8">
+      <div class="platform-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title-lg mb-0"><i class="fa-solid fa-terminal text-info me-2"></i>Interactive API Console</h5>
+          <button onclick="runApiTest()" class="btn btn-sm btn-primary fw-semibold"><i class="fa-solid fa-paper-plane me-1"></i> Send Request</button>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Endpoint URL</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-dark text-white fw-bold">POST</span>
+            <input type="text" id="apiTestUrl" class="form-range form-control font-monospace" value="/api/predict">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">JSON Request Payload</label>
+          <textarea id="apiTestPayload" class="form-control font-monospace text-light bg-dark" rows="8">{
+  "model_name": "Random Forest",
+  "num_peak_fl": 2,
+  "peak_discharge": 3400,
+  "flood_volume": 8500,
+  "event_duration": 5,
+  "time_to_peak": 2,
+  "recession_time": 3,
+  "start_month": 7,
+  "start_dow": 3
+}</textarea>
+        </div>
+
+        <div>
+          <label class="form-label small fw-semibold">Response JSON Output</label>
+          <pre id="apiTestOutput" class="p-3 bg-dark text-success rounded-3 font-monospace small" style="max-height: 280px; overflow-y: auto;">Click "Send Request" to test endpoint response...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function runApiTest() {
+  const url = document.getElementById('apiTestUrl').value;
+  const payloadText = document.getElementById('apiTestPayload').value;
+  const outputEl = document.getElementById('apiTestOutput');
+
+  outputEl.innerText = 'Executing request...';
+  outputEl.className = 'p-3 bg-dark text-warning rounded-3 font-monospace small';
+
+  try {
+    const options = {
+      method: url.includes('/predict') || url.includes('/simulate') ? 'POST' : 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    };
+    if (options.method === 'POST') {
+      options.body = payloadText;
+    }
+
+    const res = await fetch(url, options);
+    const data = await res.json();
+
+    outputEl.innerText = JSON.stringify(data, null, 2);
+    outputEl.className = 'p-3 bg-dark text-success rounded-3 font-monospace small';
+  } catch (err) {
+    outputEl.innerText = 'Request error: ' + err.message;
+    outputEl.className = 'p-3 bg-dark text-danger rounded-3 font-monospace small';
+  }
+}
+</script>
+{% endblock %}

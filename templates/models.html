@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Multi-Model ML Benchmarks · FloodRiskAI{% endblock %}
+
+{% block content %}
+<section class="hero-banner py-4">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="badge-pill-hero"><i class="fa-solid fa-cubes me-1"></i> Machine Learning Lab & Benchmarks</span>
+        <h1 class="hero-title fs-2 mt-2 mb-1">Multi-Model Performance Analytics</h1>
+        <p class="hero-sub mb-0 small text-light">Side-by-side evaluation of Random Forest, Gradient Boosting, Extra Trees, and Logistic Regression on historical flood data.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <!-- Performance Summary Grid -->
+  <div class="row g-4 mb-5">
+    {% for name, bm in benchmarks.items() %}
+    <div class="col-lg-3 col-md-6">
+      <div class="platform-card h-100 border-top border-4 {% if name=='Random Forest' %}border-primary{% elif name=='Gradient Boosting' %}border-info{% elif name=='Extra Trees' %}border-success{% else %}border-secondary{% endif %}">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-bold text-dark fs-6">{{ name }}</span>
+          <span class="badge bg-light text-dark border">AUC: {{ bm.roc_auc }}</span>
+        </div>
+
+        <div class="my-3">
+          <div class="fs-2 fw-bold text-primary">{{ bm.accuracy }}%</div>
+          <div class="small text-muted font-heading uppercase">Test Accuracy</div>
+        </div>
+
+        <div class="row g-2 text-center small border-top pt-2 mt-2">
+          <div class="col-4">
+            <div class="fw-semibold text-dark">{{ bm.precision }}%</div>
+            <div class="text-muted" style="font-size:0.7rem;">Precision</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-semibold text-dark">{{ bm.recall }}%</div>
+            <div class="text-muted" style="font-size:0.7rem;">Recall</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-semibold text-dark">{{ bm.f1_score }}%</div>
+            <div class="text-muted" style="font-size:0.7rem;">F1-Score</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ROC Curve & Feature Importance Grid -->
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="platform-card h-100">
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-chart-area text-primary me-2"></i>ROC-AUC Curves Comparison</h5>
+        <canvas id="rocChart" height="260"></canvas>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="platform-card h-100">
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-ranking-star text-warning me-2"></i>Random Forest Feature Importances</h5>
+        <canvas id="featureImpChart" height="260"></canvas>
+      </div>
+    </div>
+
+    <div class="col-lg-12">
+      <div class="platform-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title-lg mb-0"><i class="fa-solid fa-table-cells text-danger me-2"></i>Model Confusion Matrices</h5>
+          <select id="cmModelSelect" class="form-select form-select-sm w-auto fw-semibold" onchange="renderConfusionMatrix(this.value)">
+            {% for name in benchmarks.keys() %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="row justify-content-center py-3" id="cmContainer">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const benchmarks = {{ benchmarks_json | safe }};
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderRocChart();
+  renderFeatureImpChart();
+  renderConfusionMatrix('Random Forest');
+});
+
+function renderRocChart() {
+  const datasets = [];
+  const colors = {
+    'Random Forest': '#0d6efd',
+    'Gradient Boosting': '#00d2ff',
+    'Extra Trees': '#10b981',
+    'Logistic Regression': '#8b5cf6'
+  };
+
+  for (let name in benchmarks) {
+    const points = benchmarks[name].roc_curve || [];
+    datasets.push({
+      label: `${name} (AUC = ${benchmarks[name].roc_auc})`,
+      data: points.map(p => ({ x: p.fpr, y: p.tpr })),
+      borderColor: colors[name] || '#0d6efd',
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.2
+    });
+  }
+
+  // Add random chance line
+  datasets.push({
+    label: 'Random Chance (AUC = 0.500)',
+    data: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+    borderColor: '#cbd5e1',
+    borderWidth: 1,
+    borderDash: [4, 4],
+    pointRadius: 0
+  });
+
+  new Chart(document.getElementById('rocChart'), {
+    type: 'line',
+    data: { datasets: datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: { type: 'linear', min: 0, max: 1, title: { display: true, text: 'False Positive Rate (FPR)' } },
+        y: { type: 'linear', min: 0, max: 1, title: { display: true, text: 'True Positive Rate (TPR)' } }
+      }
+    }
+  });
+}
+
+function renderFeatureImpChart() {
+  const rf = benchmarks['Random Forest'];
+  if (!rf || !rf.feature_importances) return;
+
+  const labels = rf.feature_importances.map(f => f.feature);
+  const data = rf.feature_importances.map(f => (f.importance * 100).toFixed(1));
+
+  new Chart(document.getElementById('featureImpChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{ label: 'Importance (%)', data: data, backgroundColor: '#0d6efd' }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true } }
+    }
+  });
+}
+
+function renderConfusionMatrix(modelName) {
+  const bm = benchmarks[modelName];
+  if (!bm || !bm.confusion_matrix) return;
+
+  const cm = bm.confusion_matrix;
+  const tn = cm[0][0], fp = cm[0][1], fn = cm[1][0], tp = cm[1][1];
+
+  const html = `
+    <div class="col-md-6 col-lg-5">
+      <div class="p-3 bg-light border rounded-3 text-center">
+        <h6 class="fw-bold mb-3">${modelName} — Confusion Matrix</h6>
+        <div class="row g-2 font-monospace">
+          <div class="col-6">
+            <div class="p-3 bg-success-subtle border border-success rounded-3">
+              <div class="fs-4 fw-bold text-success">${tn}</div>
+              <div class="small text-muted">True Negative (Normal)</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 bg-warning-subtle border border-warning rounded-3">
+              <div class="fs-4 fw-bold text-warning-emphasis">${fp}</div>
+              <div class="small text-muted">False Positive</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 bg-danger-subtle border border-danger rounded-3">
+              <div class="fs-4 fw-bold text-danger">${fn}</div>
+              <div class="small text-muted">False Negative (Missed)</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 bg-primary-subtle border border-primary rounded-3">
+              <div class="fs-4 fw-bold text-primary">${tp}</div>
+              <div class="small text-muted">True Positive (Severe)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('cmContainer').innerHTML = html;
+}
+</script>
+{% endblock %}

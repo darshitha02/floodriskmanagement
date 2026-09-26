@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}AI Risk Calculator & SHAP Explainability · FloodRiskAI{% endblock %}
+
+{% block content %}
+<section class="hero-banner py-4">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="badge-pill-hero"><i class="fa-solid fa-brain me-1"></i> Level 2 · Multi-Model AI & SHAP Attributions</span>
+        <h1 class="hero-title fs-2 mt-2 mb-1">AI Flood Risk Calculator & Explainability</h1>
+        <p class="hero-sub mb-0 small text-light">Input hydrological event telemetry to compute a live Flood Risk Score with feature-level SHAP attributions.</p>
+      </div>
+      <!-- Preset Quick Loaders -->
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-light small fw-semibold">Quick Presets:</span>
+        <button class="btn btn-sm btn-outline-light" onclick="loadPreset('kerala2018')">2018 Kerala Flood</button>
+        <button class="btn btn-sm btn-outline-light" onclick="loadPreset('assam2020')">2020 Assam Peak</button>
+        <button class="btn btn-sm btn-outline-light" onclick="loadPreset('baseline')">Baseline Normal</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <div class="row g-4">
+    <!-- Form Column -->
+    <div class="col-lg-6">
+      <div class="platform-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title-lg mb-0"><i class="fa-solid fa-sliders text-primary me-2"></i>Hydrological Input Telemetry</h5>
+          <div>
+            <select id="modelSelect" class="form-select form-select-sm fw-semibold border-primary">
+              {% for m in models %}
+              <option value="{{ m }}" {% if m == 'Random Forest' %}selected{% endif %}>Model: {{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <form id="predictForm">
+          {% for f in features %}
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label for="{{ f.key }}" class="form-label fw-semibold mb-0 small">{{ f.label }}</label>
+              <span class="value-badge" id="{{ f.key }}_val">{{ f.default }}</span>
+            </div>
+            <input type="range" class="form-range" id="{{ f.key }}"
+                   min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}" value="{{ f.default }}"
+                   oninput="document.getElementById('{{ f.key }}_val').innerText = this.value; syncLabels();">
+            <div class="form-text small text-muted">{{ f.help }}</div>
+          </div>
+          {% endfor %}
+
+          <div id="monthDowLabels" class="form-text fw-semibold text-primary mb-3"></div>
+
+          <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm" id="btnSubmit">
+            <i class="fa-solid fa-calculator me-2"></i> Calculate Risk & Generate Attributions
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Output & Explanation Column -->
+    <div class="col-lg-6">
+      <div class="platform-card h-100 d-flex flex-column" id="resultCard">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title-lg mb-0"><i class="fa-solid fa-square-poll-vertical text-info me-2"></i>Risk Index & Explainability</h5>
+          <button id="btnExport" class="btn btn-sm btn-outline-secondary d-none" onclick="exportReport()">
+            <i class="fa-solid fa-file-pdf me-1"></i> Export PDF Report
+          </button>
+        </div>
+
+        <!-- Initial Placeholder -->
+        <div id="resultEmpty" class="text-center text-muted my-auto py-5">
+          <div style="font-size: 3.5rem;" class="mb-3">🌦️</div>
+          <h6 class="fw-bold">Ready for Prediction</h6>
+          <p class="small text-muted px-4">Adjust the sliders or pick a quick preset above, then click <strong>Calculate Risk</strong> to analyze the flood severity probability.</p>
+        </div>
+
+        <!-- Active Result View -->
+        <div id="resultBody" class="d-none">
+          <!-- Circular SVG Gauge -->
+          <div class="text-center my-3">
+            <div class="gauge-container">
+              <svg class="gauge-svg" width="180" height="180" viewBox="0 0 180 180">
+                <circle class="gauge-bg" cx="90" cy="90" r="70"></circle>
+                <circle class="gauge-meter" id="gaugeMeter" cx="90" cy="90" r="70"></circle>
+              </svg>
+              <div class="gauge-text-container">
+                <div class="gauge-score" id="riskScoreText">0%</div>
+                <div class="gauge-label" id="riskLevelText">LOW</div>
+              </div>
+            </div>
+            <div class="mt-2 fw-semibold text-dark" id="predictionText">Severe Flood</div>
+            <div class="small text-muted" id="modelUsedText">Powered by Random Forest Model</div>
+          </div>
+
+          <!-- Emergency Action Box -->
+          <div class="alert alert-info border-0 shadow-sm rounded-3 mb-4" id="recommendationBox">
+            <i class="fa-solid fa-circle-info me-2"></i><span id="recommendationText">Routine monitoring protocol.</span>
+          </div>
+
+          <!-- SHAP Attributions Section -->
+          <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-chart-bar text-primary me-2"></i>SHAP Feature Contribution Waterfall</h6>
+          <div style="max-height: 250px; overflow-y: auto;">
+            <table class="table table-sm table-hover align-middle small">
+              <thead class="table-light">
+                <tr>
+                  <th>Feature</th>
+                  <th>Value</th>
+                  <th class="text-end">Impact & Direction</th>
+                </tr>
+              </thead>
+              <tbody id="attributionsTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dowNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function syncLabels() {
+  const m = document.getElementById('start_month');
+  const d = document.getElementById('start_dow');
+  if (m && d) {
+    const mLabel = monthNames[parseInt(m.value) - 1] || m.value;
+    const dLabel = dowNames[parseInt(d.value)] || d.value;
+    document.getElementById('monthDowLabels').innerText = `Selected Timing: ${mLabel}, ${dLabel}`;
+  }
+}
+syncLabels();
+
+const presets = {
+  kerala2018: { num_peak_fl: 4, peak_discharge: 6500, flood_volume: 18500, event_duration: 14, time_to_peak: 4, recession_time: 10, start_month: 8, start_dow: 2 },
+  assam2020: { num_peak_fl: 5, peak_discharge: 8900, flood_volume: 24000, event_duration: 22, time_to_peak: 6, recession_time: 16, start_month: 7, start_dow: 3 },
+  baseline: { num_peak_fl: 1, peak_discharge: 1175, flood_volume: 2207, event_duration: 2, time_to_peak: 1, recession_time: 2, start_month: 7, start_dow: 2 }
+};
+
+function loadPreset(name) {
+  const p = presets[name];
+  if (!p) return;
+  for (let key in p) {
+    const el = document.getElementById(key);
+    if (el) {
+      el.value = p[key];
+      const valBadge = document.getElementById(key + '_val');
+      if (valBadge) valBadge.innerText = p[key];
+    }
+  }
+  syncLabels();
+  document.getElementById('predictForm').requestSubmit();
+}
+
+let lastPredictionPayload = null;
+
+const form = document.getElementById('predictForm');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    model_name: document.getElementById('modelSelect').value,
+    num_peak_fl: document.getElementById('num_peak_fl').value,
+    peak_discharge: document.getElementById('peak_discharge').value,
+    flood_volume: document.getElementById('flood_volume').value,
+    event_duration: document.getElementById('event_duration').value,
+    time_to_peak: document.getElementById('time_to_peak').value,
+    recession_time: document.getElementById('recession_time').value,
+    start_month: document.getElementById('start_month').value,
+    start_dow: document.getElementById('start_dow').value,
+  };
+
+  const btnSubmit = document.getElementById('btnSubmit');
+  btnSubmit.disabled = true;
+  btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i> Computing Attributions...';
+
+  try {
+    const res = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    lastPredictionPayload = { prediction: data, inputs: payload };
+
+    document.getElementById('resultEmpty').classList.add('d-none');
+    document.getElementById('resultBody').classList.remove('d-none');
+    document.getElementById('btnExport').classList.remove('d-none');
+
+    // Update gauge SVG
+    const score = data.risk_score;
+    document.getElementById('riskScoreText').innerText = score + '%';
+    document.getElementById('riskLevelText').innerText = data.risk_level.toUpperCase() + ' RISK';
+    document.getElementById('predictionText').innerText = 'Predicted Class: ' + data.prediction;
+    document.getElementById('modelUsedText').innerText = 'Model: ' + data.model_used;
+    document.getElementById('recommendationText').innerText = data.recommendation;
+
+    const meter = document.getElementById('gaugeMeter');
+    const strokeColor = data.risk_level === 'High' ? '#ef4444' : (data.risk_level === 'Medium' ? '#f59e0b' : '#10b981');
+    meter.style.stroke = strokeColor;
+    
+    // dasharray = 440 (2 * pi * 70 approx 440)
+    const offset = 440 - (440 * (score / 100));
+    meter.style.strokeDashoffset = offset;
+
+    // Build attributions table
+    const tableBody = document.getElementById('attributionsTable');
+    tableBody.innerHTML = '';
+    (data.attributions || []).forEach(attr => {
+      const isInc = attr.direction === 'increases';
+      const badgeClass = isInc ? 'text-danger' : 'text-success';
+      const icon = isInc ? 'fa-arrow-up' : 'fa-arrow-down';
+      
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="fw-semibold text-dark">${attr.feature}</td>
+        <td>${attr.value}</td>
+        <td class="text-end fw-bold ${badgeClass}">
+          <i class="fa-solid ${icon} me-1"></i> ${isInc ? '+' : '-'}${attr.impact_pct}% (${attr.direction})
+        </td>
+      `;
+      tableBody.appendChild(tr);
+    });
+
+  } catch (err) {
+    alert('Prediction error: ' + err.message);
+  } finally {
+    btnSubmit.disabled = false;
+    btnSubmit.innerHTML = '<i class="fa-solid fa-calculator me-2"></i> Calculate Risk & Generate Attributions';
+  }
+});
+
+async function exportReport() {
+  if (!lastPredictionPayload) return;
+  try {
+    const res = await fetch('/api/export-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lastPredictionPayload)
+    });
+    const htmlText = await res.text();
+    const win = window.open('', '_blank');
+    win.document.write(htmlText);
+    win.document.close();
+  } catch (err) {
+    alert('Failed to generate report: ' + err.message);
+  }
+}
+</script>
+{% endblock %}

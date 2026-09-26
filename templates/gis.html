@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Interactive GIS Risk Map · FloodRiskAI{% endblock %}
+
+{% block content %}
+<section class="hero-banner py-4">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="badge-pill-hero"><i class="fa-solid fa-earth-asia me-1"></i> Geospatial Intelligence · Level 1 + 2</span>
+        <h1 class="hero-title fs-2 mt-2 mb-1">Interactive India GIS Flood Risk Map</h1>
+        <p class="hero-sub mb-0 small text-light">Real-time river basin monitoring telemetry and state-level historical flood risk heatmaps across India.</p>
+      </div>
+      <div class="d-flex gap-2">
+        <button id="btnCenterIndia" class="btn btn-sm btn-outline-light"><i class="fa-solid fa-crosshairs me-1"></i> Center India</button>
+        <button id="btnToggleStations" class="btn btn-sm btn-info text-dark fw-semibold"><i class="fa-solid fa-tower-observation me-1"></i> Active Stations</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container-fluid py-4 px-lg-5">
+  <div class="row g-4">
+    <!-- Map Column -->
+    <div class="col-lg-9">
+      <div class="platform-card p-2 position-relative">
+        <div id="gisMap"></div>
+        <div class="position-absolute bottom-0 start-0 m-3 bg-white p-3 rounded-3 shadow-sm z-3" style="max-width: 280px; opacity: 0.95;">
+          <h6 class="fw-bold mb-2 small"><i class="fa-solid fa-layer-group text-primary me-1"></i> Map Legend</h6>
+          <div class="d-flex align-items-center mb-1 small">
+            <span class="d-inline-block rounded-circle me-2" style="width:12px; height:12px; background:#ef4444;"></span>
+            <span>Critical / Severe Risk (>500 Events)</span>
+          </div>
+          <div class="d-flex align-items-center mb-1 small">
+            <span class="d-inline-block rounded-circle me-2" style="width:12px; height:12px; background:#f59e0b;"></span>
+            <span>High Risk (200 - 500 Events)</span>
+          </div>
+          <div class="d-flex align-items-center mb-1 small">
+            <span class="d-inline-block rounded-circle me-2" style="width:12px; height:12px; background:#00d2ff;"></span>
+            <span>Moderate Risk (<200 Events)</span>
+          </div>
+          <div class="d-flex align-items-center small">
+            <i class="fa-solid fa-tower-observation text-danger me-2 ms-1"></i>
+            <span>Live River Gauge Telemetry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar Info Column -->
+    <div class="col-lg-3">
+      <div class="platform-card h-100">
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-list-check text-primary me-2"></i>State Risk Leaderboard</h5>
+        <div class="list-group list-group-flush mb-4" style="max-height: 280px; overflow-y: auto;">
+          {% if stats and stats.state_labels %}
+            {% for idx in range(stats.state_labels|length) %}
+            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-1">
+              <div>
+                <span class="fw-semibold text-dark small">{{ idx + 1 }}. {{ stats.state_labels[idx] }}</span>
+              </div>
+              <span class="badge bg-primary rounded-pill">{{ stats.state_counts[idx] }} events</span>
+            </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+
+        <h5 class="card-title-lg mb-3"><i class="fa-solid fa-tower-cell text-danger me-2"></i>Station Telemetry Inspector</h5>
+        <div id="stationInspector" class="p-3 bg-light rounded-3 text-muted small">
+          Click any gauge station icon on the map to inspect live water level telemetry and flood risk parameters.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  // Initialize Leaflet map centered on India
+  const map = L.map('gisMap').setView([22.5937, 78.9629], 5);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '© OpenStreetMap contributors | FloodRiskAI GIS'
+  }).addTo(map);
+
+  document.getElementById('btnCenterIndia').addEventListener('click', () => {
+    map.setView([22.5937, 78.9629], 5);
+  });
+
+  try {
+    const res = await fetch('/api/geospatial');
+    const geoData = await res.json();
+
+    // 1. Plot State Historical Risk Circles
+    if (geoData.features) {
+      geoData.features.forEach(feat => {
+        const [lon, lat] = feat.geometry.coordinates;
+        const props = feat.properties;
+        const radius = Math.min(45000, 15000 + props.historical_events * 35);
+        const color = props.historical_events > 500 ? '#ef4444' : (props.historical_events > 200 ? '#f59e0b' : '#00d2ff');
+
+        const circle = L.circle([lat, lon], {
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.35,
+          radius: radius
+        }).addTo(map);
+
+        circle.bindPopup(`
+          <div style="font-family:sans-serif;">
+            <h6 style="margin:0 0 4px; font-weight:bold; color:#0b2e4f;">${props.state}</h6>
+            <div style="font-size:12px; color:#555;">Risk Tier: <strong>${props.risk_category}</strong></div>
+            <div style="font-size:12px; color:#555;">Historical Events: <strong>${props.historical_events}</strong></div>
+          </div>
+        `);
+      });
+    }
+
+    // 2. Plot Live River Stations
+    if (geoData.stations) {
+      geoData.stations.forEach(stn => {
+        const stnColor = stn.status === 'CRITICAL' ? '#ef4444' : (stn.status === 'WARNING' ? '#f59e0b' : '#10b981');
+        
+        const customIcon = L.divIcon({
+          className: 'custom-station-icon',
+          html: `<div style="background:${stnColor}; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:14px; box-shadow:0 0 10px ${stnColor}; border:2px solid white;"><i class="fa-solid fa-tower-observation"></i></div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const marker = L.marker([stn.lat, stn.lon], { icon: customIcon }).addTo(map);
+
+        marker.bindPopup(`
+          <div style="font-family:sans-serif; min-width:200px;">
+            <div style="font-size:10px; text-transform:uppercase; color:#888; font-weight:bold;">${stn.basin}</div>
+            <h6 style="margin:2px 0 6px; font-weight:bold; color:#0b2e4f;">${stn.station}</h6>
+            <div style="font-size:12px; margin-bottom:4px;">River: <strong>${stn.river}</strong> (${stn.state})</div>
+            <div style="font-size:12px; margin-bottom:4px;">Water Level: <strong style="color:${stnColor};">${stn.current_level}m</strong> / ${stn.danger_level}m</div>
+            <div style="font-size:12px; margin-bottom:6px;">Status: <span style="background:${stnColor}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">${stn.status}</span></div>
+            <button onclick="inspectStation('${stn.id}')" style="width:100%; background:#0d6efd; color:white; border:none; padding:4px; border-radius:4px; font-size:11px; cursor:pointer;">Inspect Details →</button>
+          </div>
+        `);
+
+        marker.on('click', () => {
+          showStationInspector(stn);
+        });
+      });
+    }
+
+  } catch (err) {
+    console.error('GIS data load error:', err);
+  }
+});
+
+function showStationInspector(stn) {
+  const inspector = document.getElementById('stationInspector');
+  const badgeClass = stn.status === 'CRITICAL' ? 'bg-danger' : (stn.status === 'WARNING' ? 'bg-warning text-dark' : 'bg-success');
+
+  inspector.innerHTML = `
+    <div class="fw-bold text-dark fs-6">${stn.station}</div>
+    <div class="text-muted mb-2">${stn.basin} · ${stn.state}</div>
+    
+    <div class="mb-2">
+      <span class="badge ${badgeClass} mb-1">${stn.status}</span>
+      <div class="small">River: <strong>${stn.river}</strong></div>
+      <div class="small">Current Level: <strong>${stn.current_level}m</strong> (Danger: ${stn.danger_level}m)</div>
+      <div class="small">Discharge: <strong>${stn.discharge.toLocaleString()} cumec</strong></div>
+      <div class="small">Telemetry Trend: <strong>${stn.trend.toUpperCase()}</strong></div>
+    </div>
+    <a href="/predict" class="btn btn-sm btn-primary w-100 mt-2">Run AI Risk Assessment →</a>
+  `;
+}
+
+function inspectStation(id) {
+  fetch('/api/geospatial')
+    .then(res => res.json())
+    .then(data => {
+      const stn = data.stations.find(s => s.id === id);
+      if (stn) showStationInspector(stn);
+    });
+}
+</script>
+{% endblock %}
