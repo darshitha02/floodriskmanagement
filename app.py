@@ -423,6 +423,13 @@ def api_export_report():
     return Response(html_doc, mimetype="text/html")
 
 
+@app.route("/presentation-pdf")
+def download_presentation_pdf():
+    pdf_path = os.path.join(BASE_DIR, "FloodRiskAI_Platform_Presentation.pdf")
+    from flask import send_file
+    return send_file(pdf_path, as_attachment=True, download_name="FloodRiskAI_Platform_Presentation.pdf")
+
+
 @app.route("/api/location-search")
 def api_location_search():
     query = request.args.get("q", "").strip()
